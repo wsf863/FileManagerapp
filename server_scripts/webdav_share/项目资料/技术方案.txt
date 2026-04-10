@@ -1,0 +1,5 @@
+技术架构:
+- Kotlin + Jetpack Compose
+- OkHttp (WebDAV)
+- jcifs-ng (SMB3)
+- MVVM

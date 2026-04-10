@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">远程文件管理器</string>
+    <string name="connection_list">连接列表</string>
+    <string name="add_connection">添加连接</string>
+    <string name="webdav">WebDAV</string>
+    <string name="smb3">SMB3</string>
+    <string name="connection_name">连接名称</string>
+    <string name="server_address">服务器地址</string>
+    <string name="username">用户名</string>
+    <string name="password">密码</string>
+    <string name="share_name">共享名</string>
+    <string name="ip_address">IP地址</string>
+    <string name="save">保存</string>
+    <string name="cancel">取消</string>
+    <string name="delete">删除</string>
+    <string name="rename">重命名</string>
+    <string name="new_folder">新建文件夹</string>
+    <string name="connect">连接</string>
+    <string name="disconnect">断开</string>
+    <string name="connection_failed">连接失败</string>
+    <string name="connection_success">连接成功</string>
+    <string name="confirm_delete">确认删除</string>
+    <string name="delete_confirm_msg">确定要删除此项吗？</string>
+    <string name="folder_name">文件夹名称</string>
+    <string name="new_name">新名称</string>
+    <string name="root_directory">根目录</string>
+    <string name="loading">加载中…</string>
+    <string name="empty_folder">空文件夹</string>
+    <string name="no_connections">暂无连接，点击 + 添加</string>
+    <string name="error">错误</string>
+    <string name="ok">确定</string>
+    <string name="back">返回</string>
+    <string name="usage_title">使用说明</string>
+    <string name="usage_content">1. 点击右上角 + 按钮添加远程服务器连接\n2. 支持 WebDAV 和 SMB3 两种协议\n3. 填写服务器地址、用户名、密码等信息\n4. 保存后点击连接即可浏览远程文件\n5. 长按文件/文件夹可进行重命名、删除操作\n6. 点击路径栏可快速跳转到上级目录</string>
+    <string name="usage_help">查看使用说明</string>
+</resources>
