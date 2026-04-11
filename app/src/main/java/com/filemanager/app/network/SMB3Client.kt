@@ -41,18 +41,30 @@ class SMB3Client(
 
     private fun buildUrl(path: String): String {
         val cleanPath = path.trim('/')
+        // 去掉地址中的协议前缀（如 tcp://, smb:// 等）
+        val cleanServer = serverIP
+            .removePrefix("tcp://")
+            .removePrefix("smb://")
+            .removePrefix(" SMB://".lowercase())
+            .trim()
         val portSuffix = if (port != 445) ":$port" else ""
         return if (cleanPath.isEmpty()) {
-            "smb://$serverIP$portSuffix/$shareName/"
+            "smb://$cleanServer$portSuffix/$shareName/"
         } else {
-            "smb://$serverIP$portSuffix/$shareName/$cleanPath/"
+            "smb://$cleanServer$portSuffix/$shareName/$cleanPath/"
         }
     }
 
     private fun buildFileUrl(path: String): String {
         val cleanPath = path.trim('/')
+        // 去掉地址中的协议前缀（如 tcp://, smb:// 等）
+        val cleanServer = serverIP
+            .removePrefix("tcp://")
+            .removePrefix("smb://")
+            .removePrefix(" SMB://".lowercase())
+            .trim()
         val portSuffix = if (port != 445) ":$port" else ""
-        return "smb://$serverIP$portSuffix/$shareName/$cleanPath"
+        return "smb://$cleanServer$portSuffix/$shareName/$cleanPath"
     }
 
     suspend fun testConnection(): Result<Unit> = withContext(Dispatchers.IO) {
@@ -106,9 +118,17 @@ class SMB3Client(
                 val name = child.name.trimEnd('/')
                 // 过滤 . 和 .. 目录条目，以及空名称
                 if (name.isEmpty() || name == "." || name == "..") return@mapNotNull null
+                // 提取相对路径：去掉 smb://服务器/共享名/ 前缀
+                val childUrl = child.url.toString()
+                val cleanServer = serverIP
+                    .removePrefix("tcp://")
+                    .removePrefix("smb://")
+                    .trim()
+                val basePrefix = "smb://$cleanServer/$shareName"
+                val relativePath = childUrl.substringAfter(basePrefix, childUrl).trimEnd('/')
                 RemoteFile(
                     name = name,
-                    path = child.url.toString().replace("smb://$serverIP/$shareName", "").trimEnd('/'),
+                    path = relativePath,
                     isDirectory = child.isDirectory,
                     size = if (child.isFile) child.length() else 0L,
                     lastModified = child.lastModified
