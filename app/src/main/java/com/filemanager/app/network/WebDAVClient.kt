@@ -187,17 +187,17 @@ class WebDAVClient(
                 }
                 val body = response.body ?: return@withContext Result.failure(Exception("空响应"))
                 
-                // 使用 buffered stream 提高大文件传输效率 (64KB buffer)
-                localFile.outputStream().use { out ->
+                // 分块读取并写入本地文件，大文件不撑爆内存
+                java.io.FileOutputStream(localFile).buffered(65536).use { bufferedOut ->
                     body.byteStream().use { input ->
                         val buffer = ByteArray(65536)
                         var bytesCopied = 0L
                         var read: Int
                         while (input.read(buffer).also { read = it } != -1) {
-                            out.write(buffer, 0, read)
+                            bufferedOut.write(buffer, 0, read)
                             bytesCopied += read
                         }
-                        out.flush()
+                        bufferedOut.flush()
                         Log.d(TAG, "Downloaded $bytesCopied bytes")
                     }
                 }
@@ -232,16 +232,16 @@ class WebDAVClient(
                 val body = response.body ?: return@withContext Result.failure(Exception("空响应"))
                 
                 val contentLength = body.contentLength()
-                outputStream.use { out ->
+                outputStream.buffered(65536).use { bufferedOut ->
                     body.byteStream().use { input ->
                         val buffer = ByteArray(65536)
                         var bytesCopied = 0L
                         var read: Int
                         while (input.read(buffer).also { read = it } != -1) {
-                            out.write(buffer, 0, read)
+                            bufferedOut.write(buffer, 0, read)
                             bytesCopied += read
                         }
-                        out.flush()
+                        bufferedOut.flush()
                         Log.d(TAG, "Downloaded $bytesCopied bytes (contentLength=$contentLength)")
                     }
                 }
@@ -261,27 +261,42 @@ class WebDAVClient(
             // 标准化路径：移除首尾斜杠，避免双斜杠
             val cleanRemotePath = remotePath.trimStart('/').trimEnd('/')
             val url = buildUrl(cleanRemotePath)
-            Log.d(TAG, "Upload: ${localFile.absolutePath} -> $url (file size: ${localFile.length()} bytes)")
+            val fileSize = localFile.length()
+            Log.d(TAG, "Upload: ${localFile.absolutePath} -> $url (file size: $fileSize bytes)")
             
             val mimeType = android.webkit.MimeTypeMap.getSingleton()
                 .getMimeTypeFromExtension(localFile.name.substringAfterLast('.', ""))
                 ?: "application/octet-stream"
             
-            // 使用流式上传，OkHttp 会自动分块传输，避免大文件撑爆内存
-            val requestBody = localFile.asRequestBody(mimeType.toMediaType())
+            // 使用自定义 RequestBody 分块流式上传，避免大文件内存问题
+            val requestBody = object : RequestBody() {
+                override fun contentType() = mimeType.toMediaType()
+                override fun contentLength() = fileSize
+                override fun writeTo(sink: okio.BufferedSink) {
+                    // 分块读取本地文件并写入请求体
+                    val buffer = ByteArray(65536)
+                    java.io.FileInputStream(localFile).use { fis ->
+                        var bytesRead: Int
+                        while (fis.read(buffer).also { bytesRead = it } != -1) {
+                            sink.write(buffer, 0, bytesRead)
+                            sink.flush()
+                        }
+                    }
+                }
+            }
             
             val request = Request.Builder()
                 .url(url)
                 .put(requestBody)
                 .header("Authorization", authHeader())
-                .header("Content-Type", mimeType)
+                .header("Content-Type", "$mimeType; charset=utf-8")
                 .build()
             
             client.newCall(request).execute().use { response ->
                 val responseBody = response.body?.string() ?: ""
                 if (response.isSuccessful || response.code == 201) {
                     Log.d(TAG, "Upload success: HTTP ${response.code}")
-                    Result.success(localFile.length())
+                    Result.success(fileSize)
                 } else {
                     Log.e(TAG, "Upload failed: HTTP ${response.code}, body: $responseBody")
                     Result.failure(Exception("上传失败: HTTP ${response.code}"))
