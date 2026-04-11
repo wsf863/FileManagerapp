@@ -98,11 +98,16 @@ fun FileListScreen(
                 
                 android.util.Log.d("FileListScreen", "Uploading file: $finalFileName from URI: $selectedUri")
                 
-                // 复制到临时文件
+                // 复制到临时文件 - 使用 64KB 缓冲流，大文件不卡顿
                 val tempFile = java.io.File(context.cacheDir, finalFileName)
                 contentResolver.openInputStream(selectedUri)?.use { inputStream ->
-                    tempFile.outputStream().use { outputStream ->
-                        inputStream.copyTo(outputStream)
+                    tempFile.outputStream().buffered(65536).use { bufferedOut ->
+                        val buffer = ByteArray(65536)
+                        var read: Int
+                        while (inputStream.read(buffer).also { read = it } != -1) {
+                            bufferedOut.write(buffer, 0, read)
+                        }
+                        bufferedOut.flush()
                     }
                 } ?: throw Exception("无法打开选择的文件")
                 
