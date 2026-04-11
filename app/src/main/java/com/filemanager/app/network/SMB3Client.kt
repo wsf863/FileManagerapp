@@ -187,9 +187,8 @@ class SMB3Client(
 
     suspend fun downloadFile(remotePath: String, localFile: java.io.File): Result<Long> = withContext(Dispatchers.IO) {
         try {
-            // 标准化路径
-            val cleanRemotePath = remotePath.trimStart('/').trimEnd('/')
-            val remoteUrl = buildFileUrl(cleanRemotePath)
+            // remotePath 是文件名（不含 currentPath），因为 buildFileUrl 已经拼接了 currentPath
+            val remoteUrl = buildFileUrl(remotePath)
             android.util.Log.d("SMB3Client", "Download: $remoteUrl -> ${localFile.absolutePath}")
             
             val smbFile = SmbFile(remoteUrl, getContext())
@@ -235,8 +234,8 @@ class SMB3Client(
     /** 下载文件到指定的 OutputStream（用于写入到 content:// URI） */
     suspend fun downloadFileToStream(remotePath: String, outputStream: java.io.OutputStream): Result<Long> = withContext(Dispatchers.IO) {
         try {
-            val cleanRemotePath = remotePath.trimStart('/').trimEnd('/')
-            val remoteUrl = buildFileUrl(cleanRemotePath)
+            // remotePath 是文件名（不含 currentPath），因为 buildFileUrl 已经拼接了 currentPath
+            val remoteUrl = buildFileUrl(remotePath)
             android.util.Log.d("SMB3Client", "Download to stream: $remoteUrl")
             
             val smbFile = SmbFile(remoteUrl, getContext())

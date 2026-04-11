@@ -385,9 +385,12 @@ class FileViewModel(application: Application) : AndroidViewModel(application) {
                     return@launch
                 }
                 
+                // SMB3 使用 file.name（文件名），因为 smbClient.downloadFileToStream 内部会用 buildFileUrl 拼接 currentPath
+                // WebDAV 使用 file.path（完整相对路径）
+                val smbPath = if (conn.protocol == Protocol.SMB3) file.name else file.path
                 val result = when (conn.protocol) {
                     Protocol.WEBDAV -> webdavClient?.downloadFileToStream(file.path, outputStream)
-                    Protocol.SMB3 -> smbClient?.downloadFileToStream(file.path, outputStream)
+                    Protocol.SMB3 -> smbClient?.downloadFileToStream(smbPath, outputStream)
                 } ?: Result.failure(Exception("未连接"))
                 
                 result.fold(
