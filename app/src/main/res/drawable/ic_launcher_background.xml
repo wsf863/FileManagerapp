@@ -1,10 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <path
-        android:fillColor="#1976D2"
-        android:pathData="M0,0h108v108H0z"/>
-</vector>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 渐变背景：从天蓝到深蓝 -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:startColor="#42A5F5"
+                android:endColor="#1565C0"
+                android:angle="270"
+                android:type="linear"/>
+        </shape>
+    </item>
+</layer-list>
