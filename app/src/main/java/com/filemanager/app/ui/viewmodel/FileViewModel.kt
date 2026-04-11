@@ -276,9 +276,12 @@ class FileViewModel(application: Application) : AndroidViewModel(application) {
                 
                 android.util.Log.d("FileViewModel", "downloadAndOpenFile: downloading ${file.name} to ${localFile.absolutePath}")
                 
+                // SMB3: file.path 只是文件名，需要用 buildFileUrl(file.name) 拼接 currentPath
+                // WebDAV: file.path 是完整相对路径
+                val smbPath = if (conn.protocol == Protocol.SMB3) file.name else file.path
                 val result = when (conn.protocol) {
                     Protocol.WEBDAV -> webdavClient?.downloadFile(file.path, localFile)
-                    Protocol.SMB3 -> smbClient?.downloadFile(file.path, localFile)
+                    Protocol.SMB3 -> smbClient?.downloadFile(smbPath, localFile)
                 } ?: Result.failure(Exception("未连接"))
                 result.fold(
                     onSuccess = { size ->
