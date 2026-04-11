@@ -307,22 +307,29 @@ class FileViewModel(application: Application) : AndroidViewModel(application) {
                         android.util.Log.d("FileViewModel", "MIME type: $mimeType")
                         
                         // 构建打开文件的 Intent
+                        // 关键：从非 Activity 上下文启动必须加 FLAG_ACTIVITY_NEW_TASK
                         val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
                             setDataAndType(uri, mimeType)
-                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            // 关键：通过 ClipData 确保 URI 权限传递给目标 activity
+                            addFlags(
+                                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                or android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                            )
+                            // 通过 ClipData 确保 URI 权限传递给目标 activity
                             clipData = android.content.ClipData.newRawUri("", uri)
                         }
                         
                         try {
-                            // 先尝试直接启动（最可靠）
+                            // 先尝试直接启动
                             context.startActivity(intent)
                         } catch (e: android.content.ActivityNotFoundException) {
                             android.util.Log.e("FileViewModel", "Direct start failed, trying chooser", e)
                             // 后备：使用 chooser
                             try {
                                 val chooserIntent = android.content.Intent.createChooser(intent, "选择打开方式")
-                                chooserIntent.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                chooserIntent.addFlags(
+                                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                    or android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                                )
                                 context.startActivity(chooserIntent)
                             } catch (e2: Exception) {
                                 android.util.Log.e("FileViewModel", "Chooser also failed", e2)
