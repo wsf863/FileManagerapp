@@ -61,8 +61,27 @@ class WebDAVClient(
 
     /** 用 URI 构造正确的 URL（自动编码中文等特殊字符），路径末尾不带斜杠 */
     private fun buildUrl(path: String): String {
-        val trimmed = path.trimStart('/').trimEnd('/')
-        val full = if (trimmed.isEmpty()) baseUrl.trimEnd('/') else "$baseUrl$trimmed"
+        var cleanPath = path.trimStart('/').trimEnd('/')
+        
+        // 关键修复：坚果云返回的 href 如 /dav/王淑凤/file.jpg
+        // 而 baseUrl = https://dav.jianguoyun.com/dav/
+        // 直接拼接 cleanPath（如 dav/王淑凤/file.jpg）会导致 /dav/dav/ 重复
+        // 提取 baseUrl 中的路径目录名（如 dav），如果 cleanPath 以其开头则去掉
+        val baseHostAndPath = baseUrl.removePrefix("https://").removePrefix("http://").trimEnd('/')
+        val baseUrlPathPart = baseHostAndPath.substringAfter('/', baseHostAndPath)  // 如 dav
+        
+        // 如果 cleanPath 以 baseUrlPathPart/ 开头（如 dav/王淑凤/file.jpg），去掉这个前缀
+        // 这样 baseUrl（已含 /dav/）+ 王淑凤/file.jpg = 正确 URL
+        if (cleanPath.startsWith(baseUrlPathPart) && cleanPath.length > baseUrlPathPart.length) {
+            val afterPrefix = cleanPath.substring(baseUrlPathPart.length).trimStart('/')
+            if (afterPrefix.isNotEmpty()) {
+                cleanPath = afterPrefix
+            } else {
+                cleanPath = ""
+            }
+        }
+        
+        val full = if (cleanPath.isEmpty()) baseUrl.trimEnd('/') else "$baseUrl$cleanPath"
         return try {
             val uri = java.net.URI(full)
             uri.toASCIIString()
