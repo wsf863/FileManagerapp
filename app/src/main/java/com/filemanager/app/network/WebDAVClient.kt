@@ -35,8 +35,8 @@ class WebDAVClient(
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(120, TimeUnit.SECONDS)      // 大文件下载/上传需要更长的超时
-        .writeTimeout(120, TimeUnit.SECONDS)    // PUT 请求写入超时
+        .readTimeout(300, TimeUnit.SECONDS)      // 大文件下载/上传需要更长的超时
+        .writeTimeout(300, TimeUnit.SECONDS)    // PUT 请求写入超时
         .followRedirects(true)
         .retryOnConnectionFailure(true)
         .build()
@@ -187,10 +187,10 @@ class WebDAVClient(
                 }
                 val body = response.body ?: return@withContext Result.failure(Exception("空响应"))
                 
-                // 分块读取并写入本地文件，大文件不撑爆内存
-                java.io.FileOutputStream(localFile).buffered(65536).use { bufferedOut ->
+                // 分块读取并写入本地文件，大文件不撑爆内存 (256KB buffer)
+                java.io.FileOutputStream(localFile).buffered(262144).use { bufferedOut ->
                     body.byteStream().use { input ->
-                        val buffer = ByteArray(65536)
+                        val buffer = ByteArray(262144)
                         var bytesCopied = 0L
                         var read: Int
                         while (input.read(buffer).also { read = it } != -1) {
@@ -232,9 +232,9 @@ class WebDAVClient(
                 val body = response.body ?: return@withContext Result.failure(Exception("空响应"))
                 
                 val contentLength = body.contentLength()
-                outputStream.buffered(65536).use { bufferedOut ->
+                outputStream.buffered(262144).use { bufferedOut ->
                     body.byteStream().use { input ->
-                        val buffer = ByteArray(65536)
+                        val buffer = ByteArray(262144)
                         var bytesCopied = 0L
                         var read: Int
                         while (input.read(buffer).also { read = it } != -1) {
@@ -268,19 +268,27 @@ class WebDAVClient(
                 .getMimeTypeFromExtension(localFile.name.substringAfterLast('.', ""))
                 ?: "application/octet-stream"
             
-            // 使用自定义 RequestBody 分块流式上传，避免大文件内存问题
+            // 使用自定义 RequestBody 流式上传，避免整个文件加载内存
+            // 不设置 contentLength，让 OkHttp 自动分块发送（chunked transfer encoding）
             val requestBody = object : RequestBody() {
                 override fun contentType() = mimeType.toMediaType()
-                override fun contentLength() = fileSize
+                // 不Override contentLength()，让 OkHttp 自动处理
                 override fun writeTo(sink: okio.BufferedSink) {
-                    // 分块读取本地文件并写入请求体
-                    val buffer = ByteArray(65536)
+                    // 使用 256KB buffer 提高网络利用率
+                    val buffer = ByteArray(262144)
                     java.io.FileInputStream(localFile).use { fis ->
                         var bytesRead: Int
+                        var totalWritten = 0L
                         while (fis.read(buffer).also { bytesRead = it } != -1) {
                             sink.write(buffer, 0, bytesRead)
-                            sink.flush()
+                            totalWritten += bytesRead
+                            // 每写入 1MB 刷新一次，保持连接活跃
+                            if (totalWritten % (1024 * 1024) < buffer.size) {
+                                sink.flush()
+                            }
                         }
+                        sink.flush()
+                        Log.d(TAG, "Total written to sink: $totalWritten bytes")
                     }
                 }
             }
