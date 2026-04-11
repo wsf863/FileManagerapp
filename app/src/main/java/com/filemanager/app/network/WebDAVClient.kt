@@ -10,6 +10,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.xmlpull.v1.XmlPullParser
 import java.io.StringReader
@@ -186,10 +187,10 @@ class WebDAVClient(
                 }
                 val body = response.body ?: return@withContext Result.failure(Exception("空响应"))
                 
-                // 使用 buffered stream 提高大文件传输效率
+                // 使用 buffered stream 提高大文件传输效率 (64KB buffer)
                 localFile.outputStream().use { out ->
                     body.byteStream().use { input ->
-                        val buffer = ByteArray(8192)
+                        val buffer = ByteArray(65536)
                         var bytesCopied = 0L
                         var read: Int
                         while (input.read(buffer).also { read = it } != -1) {
@@ -233,7 +234,7 @@ class WebDAVClient(
                 val contentLength = body.contentLength()
                 outputStream.use { out ->
                     body.byteStream().use { input ->
-                        val buffer = ByteArray(8192)
+                        val buffer = ByteArray(65536)
                         var bytesCopied = 0L
                         var read: Int
                         while (input.read(buffer).also { read = it } != -1) {
@@ -266,12 +267,8 @@ class WebDAVClient(
                 .getMimeTypeFromExtension(localFile.name.substringAfterLast('.', ""))
                 ?: "application/octet-stream"
             
-            // 使用更可靠的方式创建 RequestBody，明确设置 Content-Length
-            val requestBody = localFile.inputStream().use { input ->
-                val bytes = input.readBytes()
-                Log.d(TAG, "Read ${bytes.size} bytes from local file")
-                bytes.toRequestBody(mimeType.toMediaType())
-            }
+            // 使用流式上传，OkHttp 会自动分块传输，避免大文件撑爆内存
+            val requestBody = localFile.asRequestBody(mimeType.toMediaType())
             
             val request = Request.Builder()
                 .url(url)

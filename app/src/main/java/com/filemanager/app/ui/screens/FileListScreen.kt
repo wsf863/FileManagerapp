@@ -256,9 +256,17 @@ fun FileListScreen(
     selectedItem?.let { file ->
         AlertDialog(
             onDismissRequest = { selectedItem = null },
-            title = { Text(file.name) },
+            title = { 
+                Text(
+                    file.name,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                ) 
+            },
             text = {
-                Column {
+                Column(
+                    modifier = Modifier.padding(vertical = 4.dp)
+                ) {
                     if (!file.isDirectory) {
                         // 下载到本地（选择保存位置）
                         TextButton(
@@ -267,15 +275,22 @@ fun FileListScreen(
                                 selectedItem = null
                                 if (f != null) {
                                     pendingDownloadFile = f
-                                    // 打开文件保存位置选择器
                                     downloadLauncher.launch(f.name)
                                 }
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Download, contentDescription = null)
-                                Spacer(modifier = Modifier.width(12.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(
+                                    Icons.Default.Download, 
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
                                 Text("下载到本地")
                             }
                         }
@@ -289,9 +304,17 @@ fun FileListScreen(
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null)
-                                Spacer(modifier = Modifier.width(12.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.OpenInNew, 
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
                                 Text("打开")
                             }
                         }
@@ -304,9 +327,17 @@ fun FileListScreen(
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Edit, contentDescription = null)
-                            Spacer(modifier = Modifier.width(12.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(
+                                Icons.Default.Edit, 
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
                             Text("重命名")
                         }
                     }
@@ -318,9 +349,17 @@ fun FileListScreen(
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
-                            Spacer(modifier = Modifier.width(12.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(
+                                Icons.Default.Delete, 
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
                             Text("删除", color = MaterialTheme.colorScheme.error)
                         }
                     }
@@ -500,11 +539,11 @@ fun FileListItem(
             Icon(
                 imageVector = FileTypeIcons.getIcon(file.name, file.isDirectory),
                 contentDescription = null,
-                modifier = Modifier.size(40.dp),
+                modifier = Modifier.size(36.dp),
                 tint = if (file.isDirectory) MaterialTheme.colorScheme.primary
                 else MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Spacer(modifier = Modifier.width(16.dp))
+            Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     file.name,
@@ -541,5 +580,5 @@ fun FileListItem(
             }
         }
     }
-    HorizontalDivider(modifier = Modifier.padding(start = 72.dp))
+    HorizontalDivider(modifier = Modifier.padding(start = 64.dp))
 }

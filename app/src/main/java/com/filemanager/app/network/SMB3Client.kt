@@ -181,10 +181,10 @@ class SMB3Client(
             val expectedSize = smbFile.length()
             android.util.Log.d("SMB3Client", "Remote file size: $expectedSize bytes")
             
-            // 使用 buffered stream 提高大文件传输效率
+            // 使用 buffered stream 提高大文件传输效率 (64KB buffer)
             localFile.outputStream().use { out ->
                 smbFile.inputStream.use { input ->
-                    val buffer = ByteArray(8192)
+                    val buffer = ByteArray(65536)
                     var bytesCopied = 0L
                     var read: Int
                     while (input.read(buffer).also { read = it } != -1) {
@@ -230,7 +230,7 @@ class SMB3Client(
             
             outputStream.use { out ->
                 smbFile.inputStream.use { input ->
-                    val buffer = ByteArray(8192)
+                    val buffer = ByteArray(65536)
                     var bytesCopied = 0L
                     var read: Int
                     while (input.read(buffer).also { read = it } != -1) {
@@ -265,10 +265,10 @@ class SMB3Client(
                 smbFile.delete()
             }
             
-            // 使用 buffered stream 提高大文件传输效率
+            // 使用 buffered stream 提高大文件传输效率 (64KB buffer)
             localFile.inputStream().use { input ->
                 smbFile.outputStream.use { out ->
-                    val buffer = ByteArray(8192)
+                    val buffer = ByteArray(65536)
                     var bytesCopied = 0L
                     var read: Int
                     while (input.read(buffer).also { read = it } != -1) {
