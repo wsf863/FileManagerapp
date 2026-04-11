@@ -156,18 +156,36 @@ public class WebDAVServer {
                 if (!headOnly) { exchange.getResponseBody().write(bytes); }
                 exchange.close();
             } else {
-                byte[] bytes = Files.readAllBytes(path);
+                // 流式传输文件，避免大文件撑爆内存
+                long fileSize = Files.size(path);
                 exchange.getResponseHeaders().set("Content-Type", guessMime(path.getFileName().toString()));
-                exchange.sendResponseHeaders(200, bytes.length);
-                if (!headOnly) { exchange.getResponseBody().write(bytes); }
+                exchange.sendResponseHeaders(200, fileSize);
+                if (!headOnly) {
+                    try (var in = Files.newInputStream(path);
+                         var out = exchange.getResponseBody()) {
+                        byte[] buffer = new byte[65536];
+                        int read;
+                        while ((read = in.read(buffer)) != -1) {
+                            out.write(buffer, 0, read);
+                        }
+                        out.flush();
+                    }
+                }
                 exchange.close();
             }
         }
 
         private void handlePut(HttpExchange exchange, Path path) throws IOException {
             Files.createDirectories(path.getParent());
-            try (InputStream is = exchange.getRequestBody()) {
-                Files.copy(is, path, StandardCopyOption.REPLACE_EXISTING);
+            // 流式写入，避免大文件内存问题
+            try (InputStream is = exchange.getRequestBody();
+                 var out = Files.newOutputStream(path, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+                byte[] buffer = new byte[65536];
+                int read;
+                while ((read = is.read(buffer)) != -1) {
+                    out.write(buffer, 0, read);
+                }
+                out.flush();
             }
             sendResponse(exchange, 201, "Created");
         }
