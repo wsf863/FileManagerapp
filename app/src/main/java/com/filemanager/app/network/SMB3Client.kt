@@ -55,6 +55,7 @@ class SMB3Client(
         }
     }
 
+    /** 构建文件 URL（无尾斜杠） */
     private fun buildFileUrl(path: String): String {
         val cleanPath = path.trim('/')
         // 去掉地址中的协议前缀（如 tcp://, smb:// 等）
@@ -66,6 +67,9 @@ class SMB3Client(
         val portSuffix = if (port != 445) ":$port" else ""
         return "smb://$cleanServer$portSuffix/$shareName/$cleanPath"
     }
+
+    /** 构建删除 URL（无尾斜杠） */
+    private fun buildDeleteUrl(path: String): String = buildFileUrl(path)
 
     suspend fun testConnection(): Result<Unit> = withContext(Dispatchers.IO) {
         try {
