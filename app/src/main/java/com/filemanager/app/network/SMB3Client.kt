@@ -212,6 +212,44 @@ class SMB3Client(
         }
     }
 
+    /** 下载文件到指定的 OutputStream（用于写入到 content:// URI） */
+    suspend fun downloadFileToStream(remotePath: String, outputStream: java.io.OutputStream): Result<Long> = withContext(Dispatchers.IO) {
+        try {
+            val cleanRemotePath = remotePath.trimStart('/').trimEnd('/')
+            val remoteUrl = buildFileUrl(cleanRemotePath)
+            android.util.Log.d("SMB3Client", "Download to stream: $remoteUrl")
+            
+            val smbFile = SmbFile(remoteUrl, getContext())
+            if (!smbFile.exists()) {
+                smbFile.close()
+                return@withContext Result.failure(Exception("文件不存在"))
+            }
+            
+            val expectedSize = smbFile.length()
+            android.util.Log.d("SMB3Client", "Remote file size: $expectedSize bytes")
+            
+            outputStream.use { out ->
+                smbFile.inputStream.use { input ->
+                    val buffer = ByteArray(8192)
+                    var bytesCopied = 0L
+                    var read: Int
+                    while (input.read(buffer).also { read = it } != -1) {
+                        out.write(buffer, 0, read)
+                        bytesCopied += read
+                    }
+                    out.flush()
+                    android.util.Log.d("SMB3Client", "Downloaded $bytesCopied bytes")
+                }
+            }
+            smbFile.close()
+            
+            Result.success(expectedSize)
+        } catch (e: Exception) {
+            android.util.Log.e("SMB3Client", "Download error", e)
+            Result.failure(Exception("下载失败: ${e.message}"))
+        }
+    }
+
     suspend fun uploadFile(localFile: java.io.File, remotePath: String): Result<Long> = withContext(Dispatchers.IO) {
         try {
             // 标准化路径：移除首尾斜杠，避免双斜杠

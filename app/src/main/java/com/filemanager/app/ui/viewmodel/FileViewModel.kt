@@ -307,6 +307,71 @@ class FileViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * 下载文件到用户通过 CreateDocument 选择的位置（content:// URI）
+     * 这是独立的下载按钮功能，可选择保存位置
+     */
+    fun downloadFileToUri(file: RemoteFile, uri: android.net.Uri, context: android.content.Context) {
+        val conn = _fileListState.value.connection ?: return
+        _fileListState.value = _fileListState.value.copy(isLoading = true)
+        viewModelScope.launch {
+            try {
+                // 获取 content resolver 的 OutputStream
+                val outputStream = context.contentResolver.openOutputStream(uri)
+                if (outputStream == null) {
+                    _fileListState.value = _fileListState.value.copy(
+                        isLoading = false,
+                        error = "无法打开选择的文件位置"
+                    )
+                    return@launch
+                }
+                
+                val result = when (conn.protocol) {
+                    Protocol.WEBDAV -> webdavClient?.downloadFileToStream(file.path, outputStream)
+                    Protocol.SMB3 -> smbClient?.downloadFileToStream(file.path, outputStream)
+                } ?: Result.failure(Exception("未连接"))
+                
+                result.fold(
+                    onSuccess = { size ->
+                        _fileListState.value = _fileListState.value.copy(isLoading = false)
+                        android.widget.Toast.makeText(
+                            context,
+                            "下载成功: ${file.name}",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    },
+                    onFailure = { e ->
+                        _fileListState.value = _fileListState.value.copy(
+                            isLoading = false,
+                            error = "下载失败: ${e.message}"
+                        )
+                    }
+                )
+            } catch (e: Exception) {
+                _fileListState.value = _fileListState.value.copy(
+                    isLoading = false,
+                    error = "下载失败: ${e.message}"
+                )
+            }
+        }
+    }
+
+    /**
+     * 打开已下载的文件（通过 content:// URI）
+     * 用于打开用户通过下载功能保存到本地的文件
+     */
+    fun openDownloadedFile(uri: android.net.Uri, mimeType: String, context: android.content.Context) {
+        try {
+            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, mimeType)
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(context, "没有找到可以打开此文件的应用", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
     fun uploadFile(localFile: java.io.File, context: android.content.Context) {
         val conn = _fileListState.value.connection ?: return
         val currentPath = _fileListState.value.currentPath

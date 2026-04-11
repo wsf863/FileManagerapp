@@ -43,6 +43,29 @@ fun FileListScreen(
     var showRenameDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var pendingFile by remember { mutableStateOf<RemoteFile?>(null) }
+    
+    // 用于下载到用户选择的本地位置
+    var pendingDownloadFile by remember { mutableStateOf<RemoteFile?>(null) }
+    
+    // 获取文件的 MIME 类型
+    fun getMimeType(fileName: String): String {
+        return android.webkit.MimeTypeMap.getSingleton()
+            .getMimeTypeFromExtension(fileName.substringAfterLast('.', ""))
+            ?: "*/*"
+    }
+    
+    // 下载到本地位置的文件选择器 (CreateDocument)
+    val downloadLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("*/*")
+    ) { uri ->
+        uri?.let { selectedUri ->
+            pendingDownloadFile?.let { file ->
+                android.util.Log.d("FileListScreen", "Download to: $selectedUri")
+                viewModel.downloadFileToUri(file, selectedUri, context)
+                pendingDownloadFile = null
+            }
+        }
+    }
 
     // File picker launcher for upload
     val uploadLauncher = rememberLauncherForActivityResult(
@@ -95,11 +118,34 @@ fun FileListScreen(
 
     Scaffold(
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { uploadLauncher.launch("*/*") },
-                containerColor = MaterialTheme.colorScheme.primaryContainer
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Icon(Icons.Default.Upload, contentDescription = "上传文件")
+                // 下载 FAB
+                SmallFloatingActionButton(
+                    onClick = {
+                        // 先选择一个文件来下载
+                        if (state.files.isNotEmpty()) {
+                            // 提示用户长按选择一个文件
+                            android.widget.Toast.makeText(
+                                context,
+                                "请长按选择一个文件进行下载",
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    },
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                ) {
+                    Icon(Icons.Default.Download, contentDescription = "下载")
+                }
+                // 上传 FAB
+                FloatingActionButton(
+                    onClick = { uploadLauncher.launch("*/*") },
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Icon(Icons.Default.Upload, contentDescription = "上传文件")
+                }
             }
         },
         topBar = {
@@ -214,6 +260,27 @@ fun FileListScreen(
             text = {
                 Column {
                     if (!file.isDirectory) {
+                        // 下载到本地（选择保存位置）
+                        TextButton(
+                            onClick = {
+                                val f = selectedItem
+                                selectedItem = null
+                                if (f != null) {
+                                    pendingDownloadFile = f
+                                    // 打开文件保存位置选择器
+                                    downloadLauncher.launch(f.name)
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Download, contentDescription = null)
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text("下载到本地")
+                            }
+                        }
+                        
+                        // 打开文件（下载后直接打开）
                         TextButton(
                             onClick = {
                                 val f = selectedItem
@@ -225,7 +292,7 @@ fun FileListScreen(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null)
                                 Spacer(modifier = Modifier.width(12.dp))
-                                Text("打开/下载")
+                                Text("打开")
                             }
                         }
                     }

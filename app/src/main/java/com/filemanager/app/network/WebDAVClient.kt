@@ -211,6 +211,50 @@ class WebDAVClient(
         }
     }
 
+    /** 下载文件到指定的 OutputStream（用于写入到 content:// URI） */
+    suspend fun downloadFileToStream(remotePath: String, outputStream: java.io.OutputStream): Result<Long> = withContext(Dispatchers.IO) {
+        try {
+            val cleanRemotePath = remotePath.trimStart('/').trimEnd('/')
+            val url = buildUrl(cleanRemotePath)
+            Log.d(TAG, "Download to stream: $url")
+            
+            val request = Request.Builder()
+                .url(url)
+                .get()
+                .header("Authorization", authHeader())
+                .build()
+            
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(Exception("HTTP ${response.code}: ${response.message}"))
+                }
+                val body = response.body ?: return@withContext Result.failure(Exception("空响应"))
+                
+                val contentLength = body.contentLength()
+                outputStream.use { out ->
+                    body.byteStream().use { input ->
+                        val buffer = ByteArray(8192)
+                        var bytesCopied = 0L
+                        var read: Int
+                        while (input.read(buffer).also { read = it } != -1) {
+                            out.write(buffer, 0, read)
+                            bytesCopied += read
+                        }
+                        out.flush()
+                        Log.d(TAG, "Downloaded $bytesCopied bytes (contentLength=$contentLength)")
+                    }
+                }
+                Result.success(if (contentLength > 0) contentLength else -1)
+            }
+        } catch (e: java.net.SocketTimeoutException) {
+            Log.e(TAG, "Download timeout", e)
+            Result.failure(Exception("下载超时，请检查网络连接或文件是否过大"))
+        } catch (e: Exception) {
+            Log.e(TAG, "Download error", e)
+            Result.failure(Exception("下载失败: ${e.message}"))
+        }
+    }
+
     suspend fun uploadFile(localFile: java.io.File, remotePath: String): Result<Long> = withContext(Dispatchers.IO) {
         try {
             // 标准化路径：移除首尾斜杠，避免双斜杠
