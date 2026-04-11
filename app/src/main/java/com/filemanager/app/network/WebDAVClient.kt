@@ -59,9 +59,10 @@ class WebDAVClient(
         }
     }
 
-    /** 用 URI 构造正确的 URL（自动编码中文等特殊字符） */
+    /** 用 URI 构造正确的 URL（自动编码中文等特殊字符），路径末尾不带斜杠 */
     private fun buildUrl(path: String): String {
-        val full = if (path.isEmpty()) baseUrl else "$baseUrl${path.trimStart('/')}/"
+        val trimmed = path.trimStart('/').trimEnd('/')
+        val full = if (trimmed.isEmpty()) baseUrl.trimEnd('/') else "$baseUrl$trimmed"
         return try {
             val uri = java.net.URI(full)
             uri.toASCIIString()
