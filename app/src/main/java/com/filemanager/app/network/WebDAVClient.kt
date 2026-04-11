@@ -133,6 +133,7 @@ class WebDAVClient(
     suspend fun createDirectory(path: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             val url = buildUrl(path).trimEnd('/') + "/"
+            Log.d(TAG, "MKCOL URL: $url")
             val request = Request.Builder().url(url).method("MKCOL", null)
                 .header("Authorization", authHeader()).build()
             client.newCall(request).execute().use { r ->
@@ -171,7 +172,7 @@ class WebDAVClient(
 
     suspend fun downloadFile(remotePath: String, localFile: java.io.File): Result<Long> = withContext(Dispatchers.IO) {
         try {
-            // 标准化路径
+            // 标准化路径：移除首尾斜杠
             val cleanRemotePath = remotePath.trimStart('/').trimEnd('/')
             val url = buildUrl(cleanRemotePath)
             Log.d(TAG, "Download: $url")
@@ -180,11 +181,47 @@ class WebDAVClient(
                 .url(url)
                 .get()
                 .header("Authorization", authHeader())
+                .header("Accept", "*/*")
                 .build()
             
             client.newCall(request).execute().use { response ->
+                val httpCode = response.code
+                val davHeader = response.header("DAV") ?: ""
+                Log.d(TAG, "Download response: HTTP $httpCode, DAV: $davHeader")
                 if (!response.isSuccessful) {
-                    return@withContext Result.failure(Exception("HTTP ${response.code}: ${response.message}"))
+                    // 409 可能是路径问题，尝试在路径前加斜杠
+                    if (httpCode == 409) {
+                        Log.w(TAG, "Got 409, trying with leading slash path...")
+                        val altUrl = buildUrl("/$cleanRemotePath")
+                        Log.d(TAG, "Retrying with: $altUrl")
+                        val altRequest = Request.Builder().url(altUrl).get()
+                            .header("Authorization", authHeader()).header("Accept", "*/*").build()
+                        client.newCall(altRequest).execute().use { altResponse ->
+                            val altCode = altResponse.code
+                            if (altCode == 200) {
+                                Log.d(TAG, "Retry succeeded with leading slash!")
+                                val altBody = altResponse.body ?: return@withContext Result.failure(Exception("空响应"))
+                                java.io.FileOutputStream(localFile).buffered(262144).use { bufferedOut ->
+                                    altBody.byteStream().use { input ->
+                                        val buffer = ByteArray(262144)
+                                        var bytesCopied = 0L
+                                        var read: Int
+                                        while (input.read(buffer).also { read = it } != -1) {
+                                            bufferedOut.write(buffer, 0, read)
+                                            bytesCopied += read
+                                        }
+                                        bufferedOut.flush()
+                                        Log.d(TAG, "Downloaded $bytesCopied bytes")
+                                    }
+                                }
+                                return@withContext Result.success(localFile.length())
+                            } else {
+                                Log.e(TAG, "Retry also failed: HTTP $altCode")
+                                return@withContext Result.failure(Exception("下载失败: HTTP $altCode (URL: $altUrl)"))
+                            }
+                        }
+                    }
+                    return@withContext Result.failure(Exception("下载失败: HTTP $httpCode (URL: $url)"))
                 }
                 val body = response.body ?: return@withContext Result.failure(Exception("空响应"))
                 
