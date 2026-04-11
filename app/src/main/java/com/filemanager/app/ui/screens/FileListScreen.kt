@@ -48,16 +48,48 @@ fun FileListScreen(
     val uploadLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
-        uri?.let {
-            val inputStream = context.contentResolver.openInputStream(it)
-            val fileName = uri.lastPathSegment?.substringAfterLast('/') ?: "upload_file"
-            val tempFile = java.io.File(context.cacheDir, fileName)
-            inputStream?.use { input ->
-                tempFile.outputStream().use { output ->
-                    input.copyTo(output)
+        uri?.let { selectedUri ->
+            try {
+                // 使用 contentResolver 获取更可靠的文件信息
+                val contentResolver = context.contentResolver
+                
+                // 尝试从 Cursor 获取显示名称（更可靠）
+                var fileName: String? = null
+                contentResolver.query(selectedUri, null, null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                        if (nameIndex >= 0) {
+                            fileName = cursor.getString(nameIndex)
+                        }
+                    }
                 }
+                
+                // 如果没拿到，使用 lastPathSegment 作为后备
+                if (fileName == null) {
+                    fileName = selectedUri.lastPathSegment?.substringAfterLast('/')
+                        ?.substringAfterLast(':')  // 处理一些特殊 URI 格式
+                }
+                
+                // 确保有文件名
+                val finalFileName = fileName ?: "upload_file_${System.currentTimeMillis()}"
+                
+                android.util.Log.d("FileListScreen", "Uploading file: $finalFileName from URI: $selectedUri")
+                
+                // 复制到临时文件
+                val tempFile = java.io.File(context.cacheDir, finalFileName)
+                contentResolver.openInputStream(selectedUri)?.use { inputStream ->
+                    tempFile.outputStream().use { outputStream ->
+                        inputStream.copyTo(outputStream)
+                    }
+                } ?: throw Exception("无法打开选择的文件")
+                
+                android.util.Log.d("FileListScreen", "Temp file created: ${tempFile.absolutePath} (${tempFile.length()} bytes)")
+                
+                viewModel.uploadFile(tempFile, context)
+            } catch (e: Exception) {
+                android.util.Log.e("FileListScreen", "File pick error", e)
+                android.widget.Toast.makeText(context, "选择文件失败: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
             }
-            viewModel.uploadFile(tempFile, context)
         }
     }
 

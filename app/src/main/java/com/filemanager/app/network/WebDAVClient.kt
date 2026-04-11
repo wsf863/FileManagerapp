@@ -33,9 +33,11 @@ class WebDAVClient(
     }
 
     private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(120, TimeUnit.SECONDS)      // 大文件下载/上传需要更长的超时
+        .writeTimeout(120, TimeUnit.SECONDS)    // PUT 请求写入超时
         .followRedirects(true)
+        .retryOnConnectionFailure(true)
         .build()
 
     val baseUrl = if (serverUrl.endsWith("/")) serverUrl else "$serverUrl/"
@@ -167,47 +169,90 @@ class WebDAVClient(
 
     suspend fun downloadFile(remotePath: String, localFile: java.io.File): Result<Long> = withContext(Dispatchers.IO) {
         try {
-            // remotePath 是解码路径，用 buildUrl 自动编码
-            val url = buildUrl(remotePath.trimStart('/'))
+            // 标准化路径
+            val cleanRemotePath = remotePath.trimStart('/').trimEnd('/')
+            val url = buildUrl(cleanRemotePath)
             Log.d(TAG, "Download: $url")
+            
             val request = Request.Builder()
                 .url(url)
                 .get()
                 .header("Authorization", authHeader())
                 .build()
+            
             client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@withContext Result.failure(Exception("HTTP ${response.code}"))
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(Exception("HTTP ${response.code}: ${response.message}"))
+                }
                 val body = response.body ?: return@withContext Result.failure(Exception("空响应"))
-                localFile.outputStream().use { out -> body.byteStream().copyTo(out) }
+                
+                // 使用 buffered stream 提高大文件传输效率
+                localFile.outputStream().use { out ->
+                    body.byteStream().use { input ->
+                        val buffer = ByteArray(8192)
+                        var bytesCopied = 0L
+                        var read: Int
+                        while (input.read(buffer).also { read = it } != -1) {
+                            out.write(buffer, 0, read)
+                            bytesCopied += read
+                        }
+                        out.flush()
+                        Log.d(TAG, "Downloaded $bytesCopied bytes")
+                    }
+                }
                 Result.success(localFile.length())
             }
-        } catch (e: Exception) { Result.failure(e) }
+        } catch (e: java.net.SocketTimeoutException) {
+            Log.e(TAG, "Download timeout", e)
+            Result.failure(Exception("下载超时，请检查网络连接或文件是否过大"))
+        } catch (e: Exception) {
+            Log.e(TAG, "Download error", e)
+            Result.failure(Exception("下载失败: ${e.message}"))
+        }
     }
 
     suspend fun uploadFile(localFile: java.io.File, remotePath: String): Result<Long> = withContext(Dispatchers.IO) {
         try {
-            val url = buildUrl(remotePath.trimStart('/'))
-            Log.d(TAG, "Upload: ${localFile.absolutePath} -> $url")
+            // 标准化路径：移除首尾斜杠，避免双斜杠
+            val cleanRemotePath = remotePath.trimStart('/').trimEnd('/')
+            val url = buildUrl(cleanRemotePath)
+            Log.d(TAG, "Upload: ${localFile.absolutePath} -> $url (file size: ${localFile.length()} bytes)")
+            
             val mimeType = android.webkit.MimeTypeMap.getSingleton()
                 .getMimeTypeFromExtension(localFile.name.substringAfterLast('.', ""))
                 ?: "application/octet-stream"
-            @Suppress("DEPRECATION")
-            val requestBody = RequestBody.create(mimeType.toMediaType(), localFile)
+            
+            // 使用更可靠的方式创建 RequestBody，明确设置 Content-Length
+            val requestBody = localFile.inputStream().use { input ->
+                val bytes = input.readBytes()
+                Log.d(TAG, "Read ${bytes.size} bytes from local file")
+                bytes.toRequestBody(mimeType.toMediaType())
+            }
+            
             val request = Request.Builder()
                 .url(url)
                 .put(requestBody)
                 .header("Authorization", authHeader())
+                .header("Content-Type", mimeType)
                 .build()
+            
             client.newCall(request).execute().use { response ->
+                val responseBody = response.body?.string() ?: ""
                 if (response.isSuccessful || response.code == 201) {
-                    Log.d(TAG, "Upload success")
+                    Log.d(TAG, "Upload success: HTTP ${response.code}")
                     Result.success(localFile.length())
                 } else {
-                    Log.e(TAG, "Upload failed: ${response.code}")
-                    Result.failure(Exception("HTTP ${response.code}"))
+                    Log.e(TAG, "Upload failed: HTTP ${response.code}, body: $responseBody")
+                    Result.failure(Exception("上传失败: HTTP ${response.code}"))
                 }
             }
-        } catch (e: Exception) { Result.failure(e) }
+        } catch (e: java.net.SocketTimeoutException) {
+            Log.e(TAG, "Upload timeout", e)
+            Result.failure(Exception("上传超时，请检查网络连接或文件是否过大"))
+        } catch (e: Exception) {
+            Log.e(TAG, "Upload error", e)
+            Result.failure(Exception("上传失败: ${e.message}"))
+        }
     }
 
     private fun propfindBody(): RequestBody {

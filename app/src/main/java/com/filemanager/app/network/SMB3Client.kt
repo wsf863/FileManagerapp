@@ -167,45 +167,101 @@ class SMB3Client(
 
     suspend fun downloadFile(remotePath: String, localFile: java.io.File): Result<Long> = withContext(Dispatchers.IO) {
         try {
-            val remoteUrl = buildFileUrl(remotePath)
+            // 标准化路径
+            val cleanRemotePath = remotePath.trimStart('/').trimEnd('/')
+            val remoteUrl = buildFileUrl(cleanRemotePath)
             android.util.Log.d("SMB3Client", "Download: $remoteUrl -> ${localFile.absolutePath}")
+            
             val smbFile = SmbFile(remoteUrl, getContext())
             if (!smbFile.exists()) {
                 smbFile.close()
                 return@withContext Result.failure(Exception("文件不存在"))
             }
-            val size = smbFile.length()
+            
+            val expectedSize = smbFile.length()
+            android.util.Log.d("SMB3Client", "Remote file size: $expectedSize bytes")
+            
+            // 使用 buffered stream 提高大文件传输效率
             localFile.outputStream().use { out ->
                 smbFile.inputStream.use { input ->
-                    input.copyTo(out)
+                    val buffer = ByteArray(8192)
+                    var bytesCopied = 0L
+                    var read: Int
+                    while (input.read(buffer).also { read = it } != -1) {
+                        out.write(buffer, 0, read)
+                        bytesCopied += read
+                    }
+                    out.flush()
+                    android.util.Log.d("SMB3Client", "Downloaded $bytesCopied bytes")
                 }
             }
             smbFile.close()
-            android.util.Log.d("SMB3Client", "Download complete: ${localFile.length()} bytes")
-            Result.success(localFile.length())
+            
+            val downloadedSize = localFile.length()
+            android.util.Log.d("SMB3Client", "Download complete: $downloadedSize bytes")
+            
+            // 验证文件大小
+            if (expectedSize > 0 && downloadedSize != expectedSize) {
+                android.util.Log.w("SMB3Client", "Size mismatch: expected=$expectedSize, downloaded=$downloadedSize")
+            }
+            
+            Result.success(downloadedSize)
         } catch (e: Exception) {
             android.util.Log.e("SMB3Client", "Download error", e)
-            Result.failure(e)
+            Result.failure(Exception("下载失败: ${e.message}"))
         }
     }
 
     suspend fun uploadFile(localFile: java.io.File, remotePath: String): Result<Long> = withContext(Dispatchers.IO) {
         try {
-            val remoteUrl = buildFileUrl(remotePath)
-            android.util.Log.d("SMB3Client", "Upload: ${localFile.absolutePath} -> $remoteUrl")
+            // 标准化路径：移除首尾斜杠，避免双斜杠
+            val cleanRemotePath = remotePath.trimStart('/').trimEnd('/')
+            val remoteUrl = buildFileUrl(cleanRemotePath)
+            android.util.Log.d("SMB3Client", "Upload: ${localFile.absolutePath} -> $remoteUrl (file size: ${localFile.length()} bytes)")
+            
             val smbFile = SmbFile(remoteUrl, getContext())
+            
+            // 先检查文件是否存在，如果存在则先删除再创建（避免写入问题）
+            if (smbFile.exists()) {
+                android.util.Log.d("SMB3Client", "File exists, deleting first")
+                smbFile.delete()
+            }
+            
+            // 使用 buffered stream 提高大文件传输效率
             localFile.inputStream().use { input ->
                 smbFile.outputStream.use { out ->
-                    input.copyTo(out)
+                    val buffer = ByteArray(8192)
+                    var bytesCopied = 0L
+                    var read: Int
+                    while (input.read(buffer).also { read = it } != -1) {
+                        out.write(buffer, 0, read)
+                        bytesCopied += read
+                    }
+                    out.flush()
+                    android.util.Log.d("SMB3Client", "Wrote $bytesCopied bytes")
                 }
             }
-            val size = smbFile.length()
+            
+            // 验证上传是否成功
             smbFile.close()
-            android.util.Log.d("SMB3Client", "Upload complete: $size bytes")
+            val uploadedFile = SmbFile(remoteUrl, getContext())
+            if (!uploadedFile.exists()) {
+                return@withContext Result.failure(Exception("上传后文件未找到"))
+            }
+            val size = uploadedFile.length()
+            uploadedFile.close()
+            
+            android.util.Log.d("SMB3Client", "Upload complete: $size bytes (local: ${localFile.length()})")
+            
+            // 验证文件大小匹配
+            if (size != localFile.length()) {
+                android.util.Log.w("SMB3Client", "Size mismatch: uploaded=$size, local=${localFile.length()}")
+            }
+            
             Result.success(size)
         } catch (e: Exception) {
             android.util.Log.e("SMB3Client", "Upload error", e)
-            Result.failure(e)
+            Result.failure(Exception("上传失败: ${e.message}"))
         }
     }
 }
