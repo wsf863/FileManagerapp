@@ -264,34 +264,77 @@ class FileViewModel(application: Application) : AndroidViewModel(application) {
         _fileListState.value = _fileListState.value.copy(isLoading = true)
         viewModelScope.launch {
             try {
-                val localFile = java.io.File(context.cacheDir, file.name)
+                // 使用更短的文件名避免路径问题，同时保证扩展名正确
+                val ext = file.name.substringAfterLast('.', "")
+                val baseName = if (ext.isNotEmpty() && ext != file.name) {
+                    file.name.substringBeforeLast('.')
+                } else {
+                    file.name
+                }
+                val safeFileName = "${baseName}_${System.currentTimeMillis()}.$ext".trimEnd('.')
+                val localFile = java.io.File(context.cacheDir, safeFileName)
+                
+                android.util.Log.d("FileViewModel", "downloadAndOpenFile: downloading ${file.name} to ${localFile.absolutePath}")
+                
                 val result = when (conn.protocol) {
                     Protocol.WEBDAV -> webdavClient?.downloadFile(file.path, localFile)
                     Protocol.SMB3 -> smbClient?.downloadFile(file.path, localFile)
                 } ?: Result.failure(Exception("未连接"))
                 result.fold(
                     onSuccess = { size ->
+                        android.util.Log.d("FileViewModel", "Downloaded: ${localFile.length()} bytes, exists: ${localFile.exists()}")
+                        
+                        if (!localFile.exists() || localFile.length() == 0L) {
+                            _fileListState.value = _fileListState.value.copy(
+                                isLoading = false,
+                                error = "下载后文件无效"
+                            )
+                            return@fold
+                        }
+                        
                         _fileListState.value = _fileListState.value.copy(isLoading = false)
-                        // 用 Intent 打开文件
+                        
+                        // 用 FileProvider 获取 content:// URI
                         val uri = androidx.core.content.FileProvider.getUriForFile(
                             context,
                             "${context.packageName}.fileprovider",
                             localFile
                         )
-                        val mimeType = android.webkit.MimeTypeMap.getSingleton()
-                            .getMimeTypeFromExtension(file.name.substringAfterLast('.', ""))
-                            ?: "*/*"
+                        android.util.Log.d("FileViewModel", "FileProvider URI: $uri")
+                        
+                        // 获取 MIME 类型
+                        val mimeType = getMimeTypeFromExtension(ext)
+                        android.util.Log.d("FileViewModel", "MIME type: $mimeType")
+                        
+                        // 构建打开文件的 Intent
                         val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                            setDataAndType(uri, mimeType)
+                            setData(uri)
+                            if (mimeType != "*/*") {
+                                setType(mimeType)
+                            }
                             addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }
+                        
+                        // 使用 createChooser 让用户选择打开应用
+                        val chooserIntent = android.content.Intent.createChooser(intent, "选择打开方式")
+                        chooserIntent.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        
                         try {
-                            context.startActivity(intent)
-                        } catch (e: Exception) {
+                            if (intent.resolveActivity(context.packageManager) != null) {
+                                context.startActivity(chooserIntent)
+                            } else {
+                                android.widget.Toast.makeText(context, "没有找到可以打开此文件的应用", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        } catch (e: android.content.ActivityNotFoundException) {
+                            android.util.Log.e("FileViewModel", "Activity not found", e)
                             android.widget.Toast.makeText(context, "没有找到可以打开此文件的应用", android.widget.Toast.LENGTH_SHORT).show()
+                        } catch (e: Exception) {
+                            android.util.Log.e("FileViewModel", "Error opening file", e)
+                            android.widget.Toast.makeText(context, "打开失败: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
                         }
                     },
                     onFailure = { e ->
+                        android.util.Log.e("FileViewModel", "Download failed", e)
                         _fileListState.value = _fileListState.value.copy(
                             isLoading = false,
                             error = "下载失败: ${e.message}"
@@ -299,12 +342,21 @@ class FileViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 )
             } catch (e: Exception) {
+                android.util.Log.e("FileViewModel", "downloadAndOpenFile error", e)
                 _fileListState.value = _fileListState.value.copy(
                     isLoading = false,
                     error = "下载失败: ${e.message}"
                 )
             }
         }
+    }
+    
+    /** 根据文件扩展名获取 MIME 类型 */
+    private fun getMimeTypeFromExtension(ext: String): String {
+        if (ext.isEmpty()) return "*/*"
+        val mimeType = android.webkit.MimeTypeMap.getSingleton()
+            .getMimeTypeFromExtension(ext.lowercase())
+        return mimeType ?: "*/*"
     }
 
     /**
