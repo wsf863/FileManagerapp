@@ -308,26 +308,26 @@ class FileViewModel(application: Application) : AndroidViewModel(application) {
                         
                         // 构建打开文件的 Intent
                         val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                            setData(uri)
-                            if (mimeType != "*/*") {
-                                setType(mimeType)
-                            }
+                            setDataAndType(uri, mimeType)
                             addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            // 关键：通过 ClipData 确保 URI 权限传递给目标 activity
+                            clipData = android.content.ClipData.newRawUri("", uri)
                         }
                         
-                        // 使用 createChooser 让用户选择打开应用
-                        val chooserIntent = android.content.Intent.createChooser(intent, "选择打开方式")
-                        chooserIntent.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        
                         try {
-                            if (intent.resolveActivity(context.packageManager) != null) {
+                            // 先尝试直接启动（最可靠）
+                            context.startActivity(intent)
+                        } catch (e: android.content.ActivityNotFoundException) {
+                            android.util.Log.e("FileViewModel", "Direct start failed, trying chooser", e)
+                            // 后备：使用 chooser
+                            try {
+                                val chooserIntent = android.content.Intent.createChooser(intent, "选择打开方式")
+                                chooserIntent.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                 context.startActivity(chooserIntent)
-                            } else {
+                            } catch (e2: Exception) {
+                                android.util.Log.e("FileViewModel", "Chooser also failed", e2)
                                 android.widget.Toast.makeText(context, "没有找到可以打开此文件的应用", android.widget.Toast.LENGTH_SHORT).show()
                             }
-                        } catch (e: android.content.ActivityNotFoundException) {
-                            android.util.Log.e("FileViewModel", "Activity not found", e)
-                            android.widget.Toast.makeText(context, "没有找到可以打开此文件的应用", android.widget.Toast.LENGTH_SHORT).show()
                         } catch (e: Exception) {
                             android.util.Log.e("FileViewModel", "Error opening file", e)
                             android.widget.Toast.makeText(context, "打开失败: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
