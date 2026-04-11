@@ -63,25 +63,34 @@ class WebDAVClient(
     private fun buildUrl(path: String): String {
         var cleanPath = path.trimStart('/').trimEnd('/')
         
-        // 关键修复：坚果云返回的 href 如 /dav/王淑凤/file.jpg
-        // 而 baseUrl = https://dav.jianguoyun.com/dav/
-        // 直接拼接 cleanPath（如 dav/王淑凤/file.jpg）会导致 /dav/dav/ 重复
-        // 提取 baseUrl 中的路径目录名（如 dav），如果 cleanPath 以其开头则去掉
+        // 关键修复：坚果云 baseUrl = https://dav.jianguoyun.com/dav/
+        // 服务器返回的 href 路径如 /dav/王淑凤/IMG.jpg
+        // 如果直接拼到 baseUrl 后会变成 /dav/dav/王淑凤/IMG.jpg（重复）
+        // baseUrlPathPart = "dav"（baseUrl 中除了域名的路径部分）
         val baseHostAndPath = baseUrl.removePrefix("https://").removePrefix("http://").trimEnd('/')
-        val baseUrlPathPart = baseHostAndPath.substringAfter('/', baseHostAndPath)  // 如 dav
+        val baseUrlPathPart = baseHostAndPath.substringAfter('/', baseHostAndPath)
         
-        // 如果 cleanPath 以 baseUrlPathPart/ 开头（如 dav/王淑凤/file.jpg），去掉这个前缀
-        // 这样 baseUrl（已含 /dav/）+ 王淑凤/file.jpg = 正确 URL
-        if (cleanPath.startsWith(baseUrlPathPart) && cleanPath.length > baseUrlPathPart.length) {
-            val afterPrefix = cleanPath.substring(baseUrlPathPart.length).trimStart('/')
-            if (afterPrefix.isNotEmpty()) {
-                cleanPath = afterPrefix
-            } else {
-                cleanPath = ""
+        // 检测并处理重复的路径前缀（如 dav/dav/王淑凤/ 或 dav/王淑凤/）
+        // 找路径中第一个 baseUrlPathPart（如 dav）的位置
+        val firstDavIdx = cleanPath.indexOf(baseUrlPathPart)
+        if (firstDavIdx >= 0) {
+            // 检查第一个 dav/ 之后是否紧跟着另一个 dav/
+            val afterFirst = cleanPath.substring(firstDavIdx + baseUrlPathPart.length).trimStart('/')
+            if (afterFirst.startsWith(baseUrlPathPart)) {
+                // 是 dav/dav/ 重复！取第二个 dav/ 之后的内容
+                cleanPath = afterFirst.substringAfter(baseUrlPathPart).trimStart('/')
+            } else if (firstDavIdx > 0) {
+                // dav 前面有路径，说明 dav 不是开头，直接去掉开头的 dav/
+                cleanPath = afterFirst
+            }
+            // 如果 firstDavIdx == 0 且后面没有另一个 dav，说明是正常路径如 dav/王淑凤/，去重
+            else if (afterFirst.isNotEmpty() && !afterFirst.startsWith(baseUrlPathPart)) {
+                cleanPath = afterFirst
             }
         }
         
         val full = if (cleanPath.isEmpty()) baseUrl.trimEnd('/') else "$baseUrl$cleanPath"
+        Log.d(TAG, "buildUrl: path='$path' -> baseUrlPathPart='$baseUrlPathPart' -> clean='$cleanPath' -> url='$full'")
         return try {
             val uri = java.net.URI(full)
             uri.toASCIIString()
