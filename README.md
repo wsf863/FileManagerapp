@@ -21,6 +21,12 @@ Android 远程文件管理器，支持 WebDAV 和 SMB3 两种协议。
 
 ## 贡献者
 
+youyou
+
+## 使用者
+
+所有人
+
 ## 编译
 
 ```bash
