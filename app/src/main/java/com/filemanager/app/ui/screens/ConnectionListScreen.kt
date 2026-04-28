@@ -1,4 +1,4 @@
-package com.filemanager.app.ui.screens
+﻿package com.filemanager.app.ui.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -359,6 +359,7 @@ fun UsageDialog(onDismiss: () -> Unit) {
                 "WebDAV 部署：电脑端用 80 端口启动 WebDAV 服务\n" +
                 "SMB3 部署：电脑端开启 SMB 共享 (445端口)\n\n" +
                 "制作人：王淑凤\n" +
+                "贡献者：吴甲龙\n" +
                 "贡献者：又又"
             )
         },
